@@ -25,9 +25,11 @@ start_link() ->
 init([]) ->
   {ok, _} = cowboy:start_http(http, 3, [{port, wf:config(n2o,port,8080)}],
                                        [{env, [{dispatch, rules()}]}]),
+  register(notifier, spawn(fun() -> listen_loop([]) end)),
   {ok, { {one_for_one, 5, 10}, []} }.
 
 mime() -> [{mimetypes,cow_mimetypes,all}].
+
 rules() ->
   cowboy_router:compile([
     {'_', [                  %% handle all domains
@@ -37,3 +39,12 @@ rules() ->
 	   {"/callback", post_callback, []}
      ]}
   ]).
+
+
+listen_loop(Subscribers) ->
+	receive
+		{subscribe, Pid} -> listen_loop([Pid|Subscribers]);
+		{notify, Message} ->
+			[P ! {new, Message} || P <- Subscribers],
+			listen_loop(Subscribers)
+	end.

@@ -26,6 +26,7 @@ maybe_echo(_, _, Req) ->
 echo(undefined, Req) ->
 	cowboy_req:reply(400, [], <<"Missing echo parameter.">>, Req);
 echo(Echo, Req) ->
+	notifier ! {notify, Echo},
 	cowboy_req:reply(200, [
 		{<<"content-type">>, <<"text/plain; charset=utf-8">>}
 	], Echo, Req).
