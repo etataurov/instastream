@@ -42,6 +42,26 @@ rules() ->
 
 
 listen_loop(Subscribers) ->
+	%% TODO maybe multiple subs for every district
+	Params = [
+			  {"client_id", ""},
+			  {"client_secret", ""},
+			  {"object", "geography"},
+			  {"aspect", "media"},
+			  {"lat", "60.605514"},
+			  {"lng", "56.838607"},
+			  {"radius", "5000"},
+			  {"callback_url", "http://instaweather.zzzz.io:8080/callback"}
+			 ],
+	{ok, StatusCode, RespHeaders, ClientRef} = hackney:request(post, 
+		"https://api.instagram.com/v1/subscriptions/",
+        [], 
+		{form, Params}
+    ),
+	{ok, Body} = hackney:body(ClientRef),
+	io:format("body: ~p~n~n", [Body]),
+	%% TODO unsubscribe
+	%% TODO json parser
 	receive
 		{subscribe, Pid} -> listen_loop([Pid|Subscribers]);
 		{notify, Message} ->

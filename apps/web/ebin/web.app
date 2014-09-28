@@ -2,7 +2,7 @@
              [{description,[]},
               {vsn,"1"},
               {registered,[]},
-              {applications,[kernel,stdlib,n2o]},
+              {applications,[kernel,stdlib,n2o,hackney]},
               {mod,{web_app,[]}},
               {env,[]},
               {modules,[index,index_view,post_callback,routes,web_app,

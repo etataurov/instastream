@@ -9,19 +9,19 @@ init(_Transport, Req, []) ->
 
 handle(Req, State) ->
 	{Method, Req2} = cowboy_req:method(Req),
-	HasBody = cowboy_req:has_body(Req2),
-	{ok, Req3} = maybe_echo(Method, HasBody, Req2),
+	{ok, Req3} = handle_req(Method, Req2),
 	{ok, Req3, State}.
 
-maybe_echo(<<"POST">>, true, Req) ->
+handle_req(<<"POST">>, Req) ->
+	io:format("~w~n", [Req]),
 	{ok, PostVals, Req2} = cowboy_req:body_qs(Req),
 	Echo = proplists:get_value(<<"echo">>, PostVals),
 	echo(Echo, Req2);
-maybe_echo(<<"POST">>, false, Req) ->
-	cowboy_req:reply(400, [], <<"Missing body.">>, Req);
-maybe_echo(_, _, Req) ->
-	%% Method not allowed.
-	cowboy_req:reply(405, Req).
+
+handle_req(<<"GET">>, Req) ->
+	io:format("~w~n", [Req]),
+    {QsVal, Req2} = cowboy_req:qs_val(<<"hub.challenge">>, Req),
+    cowboy_req:reply(200, [], QsVal, Req2).	
 
 echo(undefined, Req) ->
 	cowboy_req:reply(400, [], <<"Missing echo parameter.">>, Req);
