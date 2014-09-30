@@ -7,7 +7,8 @@
                   kernel,
                   stdlib,
                   n2o,
-                  hackney
+                  hackney,
+                  instagram
                  ]},
   {mod, { web_app, []}},
   {env, []}

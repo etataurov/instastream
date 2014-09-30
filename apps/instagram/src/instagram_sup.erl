@@ -1,4 +1,4 @@
--module(web_sup).
+-module(instagram_sup).
 
 -behaviour(supervisor).
 
@@ -23,18 +23,6 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-  {ok, _} = cowboy:start_http(http, 3, [{port, wf:config(n2o,port,8080)}],
-                                       [{env, [{dispatch, rules()}]}]),
-  {ok, { {one_for_one, 5, 10}, []} }.
-
-mime() -> [{mimetypes,cow_mimetypes,all}].
-
-rules() ->
-  cowboy_router:compile([
-    {'_', [                  %% handle all domains
-       {"/", n2o_cowboy, []},
-       {"/n2o/[...]", n2o_dynalo, {dir, "deps/n2o/priv", mime()}},
-       {"/ws/[...]", bullet_handler, [{handler, n2o_bullet}]}
-     ]}
-  ]).
+    io:format("INSTAGRAM~n"),
+    {ok, { {one_for_one, 5, 10}, [?CHILD(manager, worker)]} }.
 
