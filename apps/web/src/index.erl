@@ -8,7 +8,7 @@ body() ->
 	#panel{id=updater}.
 
 event(init) ->
-	{ok, Pid} = wf:comet(fun() -> loop_start(updater) end),
+	{ok, Pid} = wf:async(fun() -> loop_start(updater) end),
     put(listener, Pid),
 	register(listener, Pid),
 	wf:reg(room);
@@ -19,12 +19,16 @@ event(terminate) ->
     erase(listener).
 
 loop_start(E) ->
-    gproc_ps:subscribe(l, instaevent),
-	loop(E).
+    Tag = <<"instagood">>,
+    gproc_ps:create_single(l, {tag, Tag}),
+    manager:subscribe(Tag),
+	loop(E, Tag).
 
-loop(Elem) ->
+loop(Elem, Tag) ->
 	receive
-		{gproc_ps_event, instaevent, Text} ->
+        % TODO add monitoring to resubscribe
+		{gproc_ps_event, {tag, Tag}, Text} ->
+           io:format("EVENTT~n"),
            case maps:get(<<"type">>, Text) of
                <<"image">> ->
                    try
@@ -38,18 +42,15 @@ loop(Elem) ->
                       %TODO seconds ago
                    catch
                      %% FIXME what the reason of error??
-                     _:_ -> ok
+                     _:_ -> io:format("ERROR~n"), ok
                    end,
-                   % need to use active once and sleep in some other place
-                   timer:sleep(1000), % leads to increasing queue
+                   timer:sleep(1000),
                    wf:flush(room);
                 _ ->
                    ok
            end,
-	       loop(Elem);
+           gproc_ps:enable_single(l, {tag, Tag}),
+	       loop(Elem, Tag);
 		stop ->
-            gproc_ps:unsubscribe(l, instaevent),
 			ok
-	after 1000 ->
-	    loop(Elem)
 	end.

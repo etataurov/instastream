@@ -12,9 +12,12 @@
          handle_info/2,
          terminate/2,
          code_change/3]).
--export([new_instaevent/1]).
+-export([new_instaevent/1,
+        subscribe/1]).
 
--record(state, {geo_id, min_id}).
+-record(state, {subs=maps:new()}).
+
+-define(CONFIG_PARAM, fun(Key) -> {ok, Res} = application:get_env(Key), Res end).
 
 %%%===================================================================
 %%% API
@@ -32,6 +35,10 @@ start_link() ->
 
 new_instaevent(Body) ->
     gen_server:cast(?MODULE, {instaev, Body}). 
+
+subscribe(Tag) ->
+    gen_server:cast(?MODULE, {subscribe, Tag}).
+ 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -48,7 +55,7 @@ new_instaevent(Body) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    gen_server:cast(?MODULE, request_subscription),
+    %gen_server:cast(?MODULE, request_subscription),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -65,6 +72,7 @@ init([]) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -79,14 +87,17 @@ handle_call(_Request, _From, State) ->
 %%                                  {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_cast(request_subscription, State) ->
-    GeoId = request_subscribe(),
-    {noreply, State#state{geo_id=GeoId}};
+handle_cast({subscribe, Tag}, S = #state{subs=Subs}) ->
+    case maps:is_key(Tag, Subs) of
+        true -> {noreply, S};
+        false -> request_subscribe(Tag),
+                 {noreply, S#state{subs=maps:put(Tag, "", Subs)}}
+    end;
 handle_cast({instaev, Body}, State) ->
-    %Data = jiffy:decode(Body, [return_maps]),
-    case handle_updated_objects(State) of
+    Data = jiffy:decode(Body, [return_maps]),
+    case handle_updated_objects(Data, State) of
         none -> {noreply, State};
-        MinId -> {noreply, State#state{min_id=MinId}}
+        NewState -> {noreply, NewState}
     end;
     
 handle_cast(_Msg, State) ->
@@ -117,6 +128,12 @@ handle_info(_Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
+    % TODO how to make it work
+    {ok, _Code, _, _ClientRef} = hackney:request(delete,
+        hackney_url:make_url("https://api.instagram.com/v1/subscriptions/", [],
+                             [{<<"client_id">>, ?CONFIG_PARAM(client_id)},
+                              {<<"client_secret">>, ?CONFIG_PARAM(client_secret)},
+                              {<<"object">>, <<"all">>}])),
     ok.
 
 %%--------------------------------------------------------------------
@@ -134,20 +151,16 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 
-request_subscribe() ->
-    {ok, ClientID} = application:get_env(client_id),
-    {ok, ClientSecret} = application:get_env(client_secret), 
-    {ok, Lat} = application:get_env(lat), 
-    {ok, Lng} = application:get_env(lng), 
-    {ok, CallbackURL} = application:get_env(callback_url), 
+request_subscribe(Tag) ->
+    ClientID = ?CONFIG_PARAM(client_id),
+    ClientSecret = ?CONFIG_PARAM(client_secret),
+    CallbackURL = ?CONFIG_PARAM(callback_url),
     Params = [
 			  {"client_id", ClientID},
 			  {"client_secret", ClientSecret},
-			  {"object", "geography"},
+			  {"object", "tag"},
+              {"object_id", Tag},
 			  {"aspect", "media"},
-              {"lat", Lat},
-              {"lng", Lng},
-              {"radius", "5000"},
 			  {"callback_url", CallbackURL}
 			 ],
 	{ok, _Code, _, ClientRef} = hackney:request(post, 
@@ -155,30 +168,32 @@ request_subscribe() ->
         [], 
 		{form, Params}
     ),
-	{ok, Body} = hackney:body(ClientRef),
-    DecodedBody = jiffy:decode(Body, [return_maps]),
-    maps:get(<<"object_id">>, maps:get(<<"data">>, DecodedBody)). 
+    io:format("SUBSCRIBED~n"),
+	{ok, Body} = hackney:body(ClientRef).
     % TODO store sub_id ans unsub later
 
 
-handle_updated_objects(#state{geo_id=GeoId, min_id=MinId}) ->
-    {ok, ClientID} = application:get_env(client_id),
+handle_updated_objects(Data, S=#state{subs=Subs}) ->
+    io:format("NEW EVENT~n"),
+    ClientID = ?CONFIG_PARAM(client_id),
+    ObjectId = maps:get(<<"object_id">>, hd(Data)),
+    MinId = maps:get(ObjectId, Subs, ""),
     {ok, _Code, _, ClientRef} = hackney:request(get,
-        hackney_url:make_url("https://api.instagram.com/v1/geographies/", [GeoId, <<"media">>, <<"recent">>],
+        hackney_url:make_url("https://api.instagram.com/v1/tags/", [ObjectId, <<"media">>, <<"recent">>],
                              [{<<"client_id">>, ClientID}, {<<"min_id">>, MinId}])),
     {ok, Body} = hackney:body(ClientRef),
-    Data = jiffy:decode(Body, [return_maps]),
-    DataList = maps:get(<<"data">>, Data),
-    notify(DataList),
+    ResponseData = jiffy:decode(Body, [return_maps]),
+    DataList = maps:get(<<"data">>, ResponseData),
+    notify(DataList, ObjectId),
     case DataList of
         [] -> none;
-        [H|_T] -> maps:get(<<"id">>, H)
+        [H|_T] -> S#state{subs=maps:put(ObjectId, maps:get(<<"id">>, H), Subs)}
     end.
+ 
+notify([Obj|Other], Tag) ->
+    gproc_ps:tell_singles(l, {tag, Tag}, Obj),
+    notify(Other, Tag);
 
-notify([Obj|Other]) ->
-    gproc_ps:publish(l, instaevent, Obj),
-    notify(Other);
-
-notify([]) ->
+notify([], _) ->
     ok.
     

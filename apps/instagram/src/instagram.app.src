@@ -10,9 +10,8 @@
                   gproc       
                  ]},
   {mod, { instagram_app, []}},
-  {env, [{client_id,"YOUR-CLIENT-ID"},
-                    {client_secret,"YOUR-CLIENT-SECRET"},
-                    {lat,"GEO-LATITUDE"},
-                    {lng,"GEO-LONGTITUDE"},
-                    {callback_url,"http://YOUR-HOST:8081/callback"}]}
+  {env, [{client_id, "YOUR-CLIENT-ID"},
+         {client_secret, "YOUR-CLIENT-SECRET"},
+         {callback_url, "http://YOUR-HOST:8081/callback"}
+        ]}
  ]}.
