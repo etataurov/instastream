@@ -34,7 +34,7 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 new_instaevent(Body) ->
-    gen_server:cast(?MODULE, {instaev, Body}). 
+    gproc_ps:tell_singles(l, instaev, Body).
 
 subscribe(Tag) ->
     gen_server:cast(?MODULE, {subscribe, Tag}).
@@ -56,6 +56,7 @@ subscribe(Tag) ->
 %%--------------------------------------------------------------------
 init([]) ->
     %gen_server:cast(?MODULE, request_subscription),
+    gproc_ps:create_single(l, instaev),
     {ok, #state{}}.
 
 %%--------------------------------------------------------------------
@@ -93,12 +94,6 @@ handle_cast({subscribe, Tag}, S = #state{subs=Subs}) ->
         false -> request_subscribe(Tag),
                  {noreply, S#state{subs=maps:put(Tag, "", Subs)}}
     end;
-handle_cast({instaev, Body}, State) ->
-    Data = jiffy:decode(Body, [return_maps]),
-    case handle_updated_objects(Data, State) of
-        none -> {noreply, State};
-        NewState -> {noreply, NewState}
-    end;
     
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -113,7 +108,14 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
-handle_info(_Info, State) ->
+handle_info({gproc_ps_event, instaev, Body}, State) ->
+    Data = jiffy:decode(Body, [return_maps]),
+    case handle_updated_objects(Data, State) of
+        none -> {noreply, State};
+        NewState -> {noreply, NewState}
+    end;
+handle_info(Info, State) ->
+    io:format("some info received~p~n", [Info]),
     {noreply, State}.
 
 %%--------------------------------------------------------------------
@@ -163,7 +165,7 @@ request_subscribe(Tag) ->
 			  {"aspect", "media"},
 			  {"callback_url", CallbackURL}
 			 ],
-	{ok, _Code, _, ClientRef} = hackney:request(post, 
+	{ok, 200, _, ClientRef} = hackney:request(post, 
 		"https://api.instagram.com/v1/subscriptions/",
         [], 
 		{form, Params}
@@ -173,10 +175,10 @@ request_subscribe(Tag) ->
     % TODO store sub_id ans unsub later
 
 
-handle_updated_objects(Data, S=#state{subs=Subs}) ->
+handle_updated_objects([Obj|Other], S=#state{subs=Subs}) ->
     io:format("NEW EVENT~n"),
     ClientID = ?CONFIG_PARAM(client_id),
-    ObjectId = maps:get(<<"object_id">>, hd(Data)),
+    ObjectId = maps:get(<<"object_id">>, Obj),
     MinId = maps:get(ObjectId, Subs, ""),
     {ok, _Code, _, ClientRef} = hackney:request(get,
         hackney_url:make_url("https://api.instagram.com/v1/tags/", [ObjectId, <<"media">>, <<"recent">>],
@@ -185,10 +187,15 @@ handle_updated_objects(Data, S=#state{subs=Subs}) ->
     ResponseData = jiffy:decode(Body, [return_maps]),
     DataList = maps:get(<<"data">>, ResponseData),
     notify(DataList, ObjectId),
+    %TODO fix min_id
     case DataList of
-        [] -> none;
-        [H|_T] -> S#state{subs=maps:put(ObjectId, maps:get(<<"id">>, H), Subs)}
-    end.
+        [] -> handle_updated_objects(Other, S);
+        [H|_T] -> handle_updated_objects(Other, S#state{subs=maps:put(ObjectId, maps:get(<<"id">>, H), Subs)})
+    end;
+
+handle_updated_objects([], S) ->
+    gproc_ps:enable_single(l, instaev),
+    S.
  
 notify([Obj|Other], Tag) ->
     gproc_ps:tell_singles(l, {tag, Tag}, Obj),
