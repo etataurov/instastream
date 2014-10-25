@@ -3,7 +3,7 @@
 -behaviour(application).
 
 %% Application callbacks
--export([start/2, stop/1]).
+-export([start/2, prep_stop/1, stop/1]).
 
 %% ===================================================================
 %% Application callbacks
@@ -17,6 +17,11 @@ start(_StartType, _StartArgs) ->
         [{env, [{dispatch, Dispatch}]}]
     ),
     instagram_sup:start_link().
+
+prep_stop(State) ->
+    % FIXME this does not properly stops manager
+    instagram_sup:stop(),
+    State.
 
 stop(_State) ->
     ok.

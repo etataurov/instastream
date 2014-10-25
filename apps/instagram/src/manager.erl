@@ -3,8 +3,11 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/0,
+        stop/0]).
 
+-export([new_instaevent/1,
+        subscribe/1]).
 %% gen_server callbacks
 -export([init/1,
          handle_call/3,
@@ -12,8 +15,6 @@
          handle_info/2,
          terminate/2,
          code_change/3]).
--export([new_instaevent/1,
-        subscribe/1]).
 
 -record(state, {subs=maps:new()}).
 
@@ -38,6 +39,9 @@ new_instaevent(Body) ->
 
 subscribe(Tag) ->
     gen_server:cast(?MODULE, {subscribe, Tag}).
+
+stop() ->
+    gen_server:call(?MODULE, stop, 100000).
  
 %%%===================================================================
 %%% gen_server callbacks
@@ -74,6 +78,14 @@ init([]) ->
 %% @end
 %%--------------------------------------------------------------------
 
+handle_call(stop, _From, S) ->
+    {ok, _Code, _, _ClientRef} = hackney:request(delete,
+        hackney_url:make_url("https://api.instagram.com/v1/subscriptions/", [],
+                             [{<<"client_id">>, ?CONFIG_PARAM(client_id)},
+                              {<<"client_secret">>, ?CONFIG_PARAM(client_secret)},
+                              {<<"object">>, <<"all">>}])),
+    {stop, normal, S};
+
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -94,6 +106,7 @@ handle_cast({subscribe, Tag}, S = #state{subs=Subs}) ->
         false -> request_subscribe(Tag),
                  {noreply, S#state{subs=maps:put(Tag, "", Subs)}}
     end;
+
     
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -130,12 +143,6 @@ handle_info(Info, State) ->
 %% @end
 %%--------------------------------------------------------------------
 terminate(_Reason, _State) ->
-    % TODO how to make it work
-    {ok, _Code, _, _ClientRef} = hackney:request(delete,
-        hackney_url:make_url("https://api.instagram.com/v1/subscriptions/", [],
-                             [{<<"client_id">>, ?CONFIG_PARAM(client_id)},
-                              {<<"client_secret">>, ?CONFIG_PARAM(client_secret)},
-                              {<<"object">>, <<"all">>}])),
     ok.
 
 %%--------------------------------------------------------------------

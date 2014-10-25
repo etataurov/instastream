@@ -3,7 +3,8 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0]).
+-export([start_link/0,
+        stop/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -18,11 +19,13 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
+stop() ->
+    manager:stop().
+
 %% ===================================================================
 %% Supervisor callbacks
 %% ===================================================================
 
 init([]) ->
-    io:format("INSTAGRAM~n"),
     {ok, { {one_for_one, 5, 10}, [?CHILD(manager, worker)]} }.
 
