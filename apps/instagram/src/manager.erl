@@ -170,13 +170,11 @@ request_subscribe(Tag) ->
         [], 
 		{form, Params}
     ),
-    io:format("SUBSCRIBED~n"),
 	{ok, Body} = hackney:body(ClientRef).
     % TODO store sub_id ans unsub later
 
 
 handle_updated_objects([Obj|Other], S=#state{subs=Subs}) ->
-    io:format("NEW EVENT~n"),
     ClientID = ?CONFIG_PARAM(client_id),
     ObjectId = maps:get(<<"object_id">>, Obj),
     MinId = maps:get(ObjectId, Subs, ""),
